@@ -158,6 +158,11 @@ func (sdb *SQLDb) CreateTable(tableDef string) bool {
 	return sdb.Exec(fmt.Sprintf("CREATE TABLE %s", tableDef))
 }
 
+// DropTable - Drop the table definition.
+func (sdb *SQLDb) DropTable(tableDef string) {
+	sdb.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s", tableDef))
+}
+
 // CreateIndex - Create the index definition.
 func (sdb *SQLDb) CreateIndex(indexDef string) bool {
 	return sdb.Exec(fmt.Sprintf("CREATE INDEX %s", indexDef))
