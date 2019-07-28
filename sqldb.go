@@ -3,7 +3,6 @@ package sqldb
 import (
 	"database/sql"
 	"fmt"
-	"log"
 
 	// Extend the sql.DB structure to the SQLDb structure.
 	_ "github.com/mattn/go-sqlite3"
@@ -43,10 +42,10 @@ var internalPatchDbFuncs = []PatchFuncType{
 func OpenAndPatchDb(dbFilename string, patchFuncs []PatchFuncType) (*SQLDb, error) {
 	sdb, err := OpenDb(dbFilename)
 	if err != nil {
-		return nil, err
+		return sdb, err
 	}
 	if err := sdb.PatchDb(patchFuncs); err != nil {
-		return nil, err
+		return sdb, err
 	}
 	return sdb, nil
 }
@@ -57,19 +56,23 @@ func OpenDb(dbFilename string) (*SQLDb, error) {
 	sdb := &SQLDb{}
 	sdb.DB, err = sql.Open("sqlite3", dbFilename)
 	if err != nil {
-		return nil, err
+		return sdb, err
 	}
 	if nil != sdb.DB.Ping() {
-		return nil, fmt.Errorf("could not communicate with database: %s", dbFilename)
+		return sdb, fmt.Errorf("could not communicate with database: %s", dbFilename)
 	}
 	return sdb, nil
 }
 
 // PatchDb - Patch a database if necessary.
 func (sdb *SQLDb) PatchDb(patchFuncs []PatchFuncType) error {
-	// Create the patch tables
+	// Always run internal patch functions first
 	if err := sdb.patch(internalPatchDbFuncs); err != nil {
 		return err
+	}
+	if patchFuncs == nil {
+		// User does not want to do their own patching
+		return nil
 	}
 	// Run the user patches
 	return sdb.patch(patchFuncs)
@@ -93,7 +96,6 @@ func (sdb *SQLDb) patch(patchFuncs []PatchFuncType) error {
 				sdb.rollbackPatch()
 				return fmt.Errorf("could not commit patch database for version %d: %v", patch.PatchID, err)
 			}
-			log.Printf("INFO: Patched database version %d.\n", patch.PatchID)
 		}
 	}
 	return nil
@@ -207,8 +209,8 @@ func (sdb *SQLDb) CreateTable(tableDef string) error {
 }
 
 // DropTable - Drop the table definition.
-func (sdb *SQLDb) DropTable(tableDef string) {
-	sdb.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s", tableDef))
+func (sdb *SQLDb) DropTable(tableDef string) error {
+	return sdb.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s", tableDef))
 }
 
 // CreateIndex - Create the index definition.
@@ -216,17 +218,25 @@ func (sdb *SQLDb) CreateIndex(indexDef string) error {
 	return sdb.Exec(fmt.Sprintf("CREATE INDEX %s", indexDef))
 }
 
+// ExecResults - Execute the statement with the bound arguments.
+func (sdb *SQLDb) ExecResults(stmt string, args ...interface{}) (sql.Result, error) {
+	statement, err := sdb.Prepare(stmt)
+	defer closeStmt(statement)
+	if err != nil {
+		return nil, fmt.Errorf("dberror: preparing %s: %v", stmt, err)
+	}
+	var res sql.Result
+	res, err = statement.Exec(args...)
+	if err != nil {
+		return nil, fmt.Errorf("dberror: executing %s: %v", stmt, err)
+	}
+	return res, nil
+}
+
 // Exec - Execute the statement with the bound arguments.
 func (sdb *SQLDb) Exec(stmt string, args ...interface{}) error {
-	statement, err := sdb.Prepare(stmt)
-	if err != nil {
-		return fmt.Errorf("dberror: preparing %s: %v", stmt, err)
-	}
-	_, err = statement.Exec(args...)
-	if err != nil {
-		return fmt.Errorf("dberror: executing %s: %v", stmt, err)
-	}
-	return nil
+	_, err := sdb.ExecResults(stmt, args...)
+	return err
 }
 
 // SingleQuery - Query the database, and retrieve the results. Expected single value return.
@@ -258,6 +268,12 @@ func (sdb *SQLDb) MultiQuery(stmt string, action func(rows *sql.Rows) error) err
 		}
 	}
 	return nil
+}
+
+func closeStmt(stmt *sql.Stmt) {
+	if nil != stmt {
+		stmt.Close()
+	}
 }
 
 func closeRows(rows *sql.Rows) {
