@@ -108,14 +108,13 @@ func (sdb *SQLDb) GetGkey() (int, error) {
 		return 0, err
 	}
 
-	var oldgkey int
-	if err := sdb.SingleQuery("SELECT next FROM gkey", &oldgkey); err != nil {
+	var gkey int
+	if err := sdb.SingleQuery("SELECT next FROM gkey", &gkey); err != nil {
 		sdb.RollbackTrans()
 		return 0, err
 	}
 
-	gkey := oldgkey + 1
-	if err := sdb.Exec("UPDATE gkey SET next = ? WHERE next = ?", gkey, oldgkey); err != nil {
+	if err := sdb.Exec("UPDATE gkey SET next = ? WHERE next = ?", gkey+1, gkey); err != nil {
 		sdb.RollbackTrans()
 		return 0, err
 	}

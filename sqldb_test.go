@@ -12,6 +12,56 @@ import (
 const testFolderName = ".testspace"
 const testDbName = "TestDb"
 
+func setupTests(t *testing.T) {
+	removeTempFiles(t)
+}
+
+func cleanupTests(t *testing.T) {
+	removeTempFiles(t)
+}
+
+func removeTempFiles(t *testing.T) {
+	if gocommon.FileExists(testDbName) {
+		os.Remove(testDbName)
+	}
+}
+
+func openTestDb(t *testing.T) *SQLDb {
+	sdb, err := OpenDb(testDbName)
+	if err != nil {
+		t.Errorf("OpenDb error: %v", err)
+	}
+	// Should still have a valid object
+	if sdb == nil {
+		t.Error("OpenDb returned nil SQLDb")
+	}
+
+	return sdb
+}
+
+func openPatchedTestDb(t *testing.T) *SQLDb {
+	sdb, err := OpenAndPatchDb(testDbName, nil)
+	if err != nil {
+		t.Errorf("OpenDb error: %v", err)
+	}
+	// Should still have a valid object
+	if sdb == nil {
+		t.Error("OpenDb returned nil SQLDb")
+	}
+
+	return sdb
+}
+
+func closeDb(t *testing.T, sdb **SQLDb) {
+	if *sdb != nil {
+		err := (*sdb).Close()
+		if err != nil {
+			t.Errorf("Close database error: %v", err)
+		}
+	}
+	sdb = nil
+}
+
 func TestMain(m *testing.M) {
 	// call flag.Parse() here if TestMain uses flags
 	saveFolder, _ := os.Getwd()
@@ -161,39 +211,64 @@ func TestDropNonExistingTable(t *testing.T) {
 	}
 }
 
-func setupTests(t *testing.T) {
-	removeTempFiles(t)
-}
+func TestCreateIndex(t *testing.T) {
+	setupTests(t)
+	defer cleanupTests(t)
 
-func cleanupTests(t *testing.T) {
-	removeTempFiles(t)
-}
-
-func removeTempFiles(t *testing.T) {
-	if gocommon.FileExists(testDbName) {
-		os.Remove(testDbName)
-	}
-}
-
-func openTestDb(t *testing.T) *SQLDb {
-	sdb, err := OpenDb(testDbName)
+	sdb := openTestDb(t)
+	defer closeDb(t, &sdb)
+	err := sdb.CreateTable("testtable (id INTEGER, field1 TEXT, field2 TEXT)")
 	if err != nil {
-		t.Errorf("OpenDb error: %v", err)
-	}
-	// Should still have a valid object
-	if sdb == nil {
-		t.Error("OpenDb returned nil SQLDb")
+		t.Errorf("CreateTable error: %v", err)
 	}
 
-	return sdb
+	err = sdb.CreateIndex("test_idx ON testtable (id)")
+	if err != nil {
+		t.Errorf("CreateIndex error: %v", err)
+	}
 }
 
-func closeDb(t *testing.T, sdb **SQLDb) {
-	if *sdb != nil {
-		err := (*sdb).Close()
-		if err != nil {
-			t.Errorf("Close database error: %v", err)
-		}
+func TestCreateIndexNonExistingTable(t *testing.T) {
+	setupTests(t)
+	defer cleanupTests(t)
+
+	sdb := openTestDb(t)
+	defer closeDb(t, &sdb)
+
+	err := sdb.CreateIndex("test_idx ON notatable (id)")
+	if err == nil {
+		t.Error("CreateIndex did not return an error")
 	}
-	sdb = nil
+}
+func testGkey(t *testing.T, err error, expected, actual int) {
+	if err != nil {
+		t.Errorf("GetKey error: %v", err)
+	}
+
+	if actual != expected {
+		t.Errorf("Expected gkey to be %v, but was %v", expected, actual)
+	}
+}
+
+func TestGetGkey(t *testing.T) {
+
+	setupTests(t)
+	defer cleanupTests(t)
+
+	sdb := openPatchedTestDb(t)
+	defer closeDb(t, &sdb)
+
+	gkey, err := sdb.GetGkey()
+	// A new database should have gkey start at 1.
+	testGkey(t, err, 1, gkey)
+
+	gkey, err = sdb.GetGkey()
+	testGkey(t, err, 2, gkey)
+
+	// Close and re-open the database
+	closeDb(t, &sdb)
+	sdb = openTestDb(t)
+
+	gkey, err = sdb.GetGkey()
+	testGkey(t, err, 3, gkey)
 }
