@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/semog/gocommon"
+	"github.com/semog/go-common"
 )
 
 // In testspace, no one can hear you fail.
