@@ -3,6 +3,7 @@ package sqldb
 import (
 	"database/sql"
 	"fmt"
+	"log"
 
 	// Extend the sql.DB structure to the SQLDb structure.
 	_ "github.com/mattn/go-sqlite3"
@@ -147,7 +148,13 @@ func (sdb *SQLDb) CommitOnSuccess(success bool) error {
 
 // CommitOnNoError - Commit the transaction if the error is nil
 func (sdb *SQLDb) CommitOnNoError(err error) error {
-	return sdb.CommitOnSuccess(nil == err)
+	if err != nil {
+		if rberr := sdb.RollbackTrans(); rberr != nil {
+			log.Print(rberr)
+		}
+		return err
+	}
+	return sdb.CommitTrans()
 }
 
 // CommitSavePointOnSuccess - Commit up to the save point (or merge with parent transaction) if the expression evaluates to true.
@@ -160,7 +167,22 @@ func (sdb *SQLDb) CommitSavePointOnSuccess(name string, success bool) error {
 
 // CommitSavePointOnNoError - Commit up to the save point (or merge with parent transaction) if the error is nil.
 func (sdb *SQLDb) CommitSavePointOnNoError(name string, err error) error {
-	return sdb.CommitSavePointOnSuccess(name, nil == err)
+	if err != nil {
+		if rberr := sdb.RollbackSavePoint(name); rberr != nil {
+			log.Print(rberr)
+		}
+		return err
+	}
+	return sdb.CommitSavePoint(name)
+}
+
+// ExecWithSavePoint - Execute the database function wrapped inside of a named Save Point.
+func (sdb *SQLDb) ExecWithSavePoint(spName string, fn func() error) error {
+	if err := sdb.CreateSavePoint(spName); err != nil {
+		return err
+	}
+	// Commit if the function has no errors
+	return sdb.CommitSavePointOnNoError(spName, fn())
 }
 
 func (sdb *SQLDb) patched(patchid int) bool {
