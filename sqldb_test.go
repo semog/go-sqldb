@@ -5,22 +5,22 @@ import (
 	"os"
 	"testing"
 
-	"github.com/semog/go-common"
+	gocommon "github.com/semog/go-common"
 )
 
 // In testspace, no one can hear you fail.
 const testFolderName = ".testspace"
 const testDbName = "TestDb"
 
-func setupTests(t *testing.T) {
-	removeTempFiles(t)
+func setupTests(_ *testing.T) {
+	removeTempFiles()
 }
 
-func cleanupTests(t *testing.T) {
-	removeTempFiles(t)
+func cleanupTests(_ *testing.T) {
+	removeTempFiles()
 }
 
-func removeTempFiles(t *testing.T) {
+func removeTempFiles() {
 	if gocommon.FileExists(testDbName) {
 		os.Remove(testDbName)
 	}
